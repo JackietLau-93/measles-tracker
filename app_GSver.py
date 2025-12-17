@@ -75,6 +75,43 @@ def check_password(role_key):
 def logout(role_key):
     st.session_state[f"auth_{role_key}"] = False
     st.rerun()
+# --- LOGIC HELPERS ---
+def clean_id(id_str):
+    """Removes hyphens and spaces."""
+    if id_str:
+        return id_str.replace("-", "").replace(" ", "")
+    return ""
+
+def parse_mykad_dob(mykad):
+    """Extracts DOB date object from 12-digit MyKad."""
+    clean = clean_id(mykad)
+    if len(clean) == 12 and clean.isdigit():
+        try:
+            year_prefix = clean[:2]
+            month = clean[2:4]
+            day = clean[4:6]
+            
+            # Simple 1900 vs 2000 logic (Adjust threshold as needed)
+            current_year_short = int(datetime.now().strftime("%y"))
+            full_year = f"20{year_prefix}" if int(year_prefix) <= current_year_short else f"19{year_prefix}"
+            
+            return datetime.strptime(f"{full_year}-{month}-{day}", "%Y-%m-%d").date()
+        except ValueError:
+            return None
+    return None
+
+def calculate_age_display(dob):
+    """Returns string 'X years Y months'."""
+    if not dob: return ""
+    today = datetime.now().date()
+    years = today.year - dob.year
+    months = today.month - dob.month
+    if today.day < dob.day:
+        months -= 1
+    if months < 0:
+        years -= 1
+        months += 12
+    return f"{years} years, {months} months"
 
 # --- APP UI START ---
 st.set_page_config(page_title="Measles Cloud System", layout="wide", page_icon="🔐")
@@ -84,40 +121,128 @@ role = st.sidebar.radio("Select Your Portal:", ["clinician", "epidemiologist", "
 
 st.sidebar.markdown("---")
 
+
 # --- VIEW 1: CLINICIAN ---
 if role == "clinician":
     if check_password("clinician"):
         st.sidebar.button("Log Out", on_click=logout, args=("clinician",))
         
         st.header("👨‍⚕️ Phase 1: Clinical Entry")
-        st.info("Please clerk the patient and submit for investigation.")
+        st.info("Interactive Clerking Form: Enter MyKad to auto-fill DOB/Age.")
+
+        # --- SECTION A: DEMOGRAPHICS ---
+        st.subheader("Section A: Demographics")
         
-        with st.form("entry_form"):
-            c1, c2 = st.columns(2)
-            name = c1.text_input("Name")
-            mykad = c2.text_input("ID / MyKad")
+        # 1. Patient Name (Auto-Uppercase)
+        name_input = st.text_input("1. Patient Name *")
+        name = name_input.upper() if name_input else ""
+
+        # 2. MyKad & Auto-Logic
+        col_id1, col_id2 = st.columns(2)
+        mykad_raw = col_id1.text_input("2. MyKad / ID Number *", help="Enter without hyphens for auto-calculation")
+        mykad = clean_id(mykad_raw)
+        
+        # Auto-detect DOB from MyKad if possible
+        auto_dob = parse_mykad_dob(mykad)
+        
+        # 3. Nationality
+        nat_choice = col_id2.selectbox("3. Nationality *", ["Malaysia", "Foreigner"])
+        nationality = nat_choice
+        if nat_choice == "Foreigner":
+            nationality = st.text_input("Specify Nationality *")
+
+        # 4. Ethnicity
+        eth_choice = st.selectbox("4. Ethnicity *", ["Malay", "Chinese", "Indian", "Indigenous", "Others"])
+        ethnicity = eth_choice
+        if eth_choice == "Others":
+            ethnicity = st.text_input("Specify Ethnicity *")
+
+        # 5 & 6. Gender & DOB
+        c5, c6 = st.columns(2)
+        gender = c5.selectbox("5. Gender *", ["Male", "Female"])
+        
+        # Logic: Use Auto-DOB if valid, otherwise allow manual pick
+        dob = c6.date_input("6. Date of Birth *", value=auto_dob if auto_dob else None)
+        
+        # Auto-Calculate Age
+        age_str = calculate_age_display(dob)
+        if dob:
+            st.caption(f"📅 Calculated Age: **{age_str}**")
             
-            c3, c4 = st.columns(2)
-            age = c3.number_input("Age", min_value=0)
-            district = c4.selectbox("District", ["Timur Laut", "Barat Daya", "SPU", "SPT", "SPS"])
-            
-            st.subheader("Clinical Signs")
-            fever = st.selectbox("Fever", ["Yes", "No"])
-            rash = st.selectbox("Rash", ["Yes", "No"])
-            complaint = st.text_area("Presenting Complaint")
-            
-            if st.form_submit_button("🚀 Submit Case"):
-                if not name:
-                    st.error("Name is required.")
-                else:
-                    new_id = datetime.now().strftime("%Y%m%d%H%M%S")
-                    data = {
-                        "ID": new_id, "Status": "Pending_Epi", "Name": name, "MyKad": mykad,
-                        "Age": age, "District": district, "Fever": fever, "Rash": rash,
-                        "Complaint": complaint, "Final_Classification": "Pending"
-                    }
-                    save_new_case(data)
-                    st.success(f"Case uploaded successfully! ID: {new_id}")
+            # 12. Occupation Logic (Auto-fill if under 18)
+            years_old = int(age_str.split(" ")[0])
+            is_underage = years_old < 18
+        else:
+            is_underage = False
+
+        # 7-10. Address & Location (Simulating Google Maps functionality)
+        st.markdown("---")
+        st.markdown("##### 📍 Location Details")
+        
+        # Note: True Google Maps Autocomplete requires an API Key ($$$). 
+        # For this prototype, we provide a Link to open Maps and a manual entry box.
+        col_map1, col_map2 = st.columns([1, 3])
+        with col_map1:
+            st.link_button("🗺️ Open Google Maps", "https://www.google.com.my/maps", help="Find address and copy-paste here")
+        with col_map2:
+            address = st.text_area("7. Full Address (Manual Input or Paste from Maps) *", height=68)
+
+        c8, c9, c10 = st.columns(3)
+        postcode = c8.text_input("8. Postcode *")
+        district = c9.selectbox("9. District *", ["Timur Laut", "Barat Daya", "Seberang Perai Utara", "Seberang Perai Tengah", "Seberang Perai Selatan", "Lain-lain"])
+        state = c10.text_input("10. State *", value="Pulau Pinang")
+
+        # 11 & 12. Contact & Occupation
+        c11, c12 = st.columns(2)
+        contact_raw = c11.text_input("11. Contact No. *")
+        contact = clean_id(contact_raw) # Reusing cleaner to strip chars
+        
+        # Auto-fill occupation if under 18
+        if is_underage:
+            occupation = c12.text_input("12. Occupation *", value="Underage / Student", disabled=False)
+        else:
+            occupation = c12.text_input("12. Occupation *")
+
+        # 13 & 14. Workplace / School
+        st.markdown("##### 🏫 Premise Details")
+        col_prem1, col_prem2 = st.columns(2)
+        work_name = col_prem1.text_input("13. Workplace/School Name *")
+        work_addr = col_prem2.text_area("14. Workplace/School Address *", height=68)
+
+        st.markdown("---")
+        
+        # --- SAVE BUTTON ---
+        if st.button("🚀 Save & Proceed to Phase 2", type="primary"):
+            if not name or not mykad or not dob:
+                st.error("Please fill in all mandatory (*) fields.")
+            else:
+                new_id = datetime.now().strftime("%Y%m%d%H%M%S")
+                
+                # Consolidate Data
+                case_data = {
+                    "ID": new_id, 
+                    "Status": "Pending_Epi", 
+                    "Name": name, 
+                    "MyKad": mykad,
+                    "Nationality": nationality,
+                    "Ethnicity": ethnicity,
+                    "Gender": gender,
+                    "DOB": str(dob),
+                    "Age": age_str,
+                    "Address": address,
+                    "Postcode": postcode,
+                    "District": district,
+                    "State": state,
+                    "Contact": contact,
+                    "Occupation": occupation,
+                    "Premise_Name": work_name,
+                    "Premise_Address": work_addr,
+                    "Final_Classification": "Pending"
+                }
+                
+                save_new_case(case_data)
+                st.success(f"Case **{name}** created successfully! ID: {new_id}")
+                st.balloons()
 
 # --- VIEW 2: EPIDEMIOLOGIST ---
 elif role == "epidemiologist":
