@@ -282,39 +282,181 @@ if role == "clinician":
         work_addr = col_prem2.text_area("14. Workplace/School Address *", value=p_addr_val, height=100)
 
         st.markdown("---")
+        # --- SECTION B: CLINICAL INFORMATION ---
+st.subheader("Section B: Clinical Information")
+        st.caption("The 'Anchor' Dates below are crucial for the algorithm to determine Measles probability.")
         
-        # --- SAVE BUTTON ---
-        if st.button("🚀 Save & Proceed to Phase 2", type="primary"):
-            if not name or not mykad or not dob:
-                st.error("Please fill in all mandatory (*) fields.")
+        # 
+        
+        # --- B.1 HISTORY TAKING ---
+        st.markdown("##### 📜 B.1 History Taking")
+
+        # 15. FEVER
+        c1, c2 = st.columns([1, 3])
+        fever = c1.radio("15. Fever *", ["Yes", "No"], horizontal=True, index=1)
+        
+        fever_onset = None
+        fever_subside = None
+        fever_temp = 0.0
+
+        if fever == "Yes":
+            c2_1, c2_2, c2_3 = c2.columns(3)
+            fever_onset = c2_1.date_input("15a. Onset Date *", value=None, key="f_onset")
+            fever_subside = c2_2.date_input("15b. Subside Date (Optional)", value=None, key="f_sub")
+            fever_temp = c2_3.number_input("15c. Max Temp (°C)", min_value=35.0, max_value=45.0, step=0.1, format="%.1f")
+
+        # 16. RASH (The Critical Anchor)
+        st.markdown("---")
+        c3, c4 = st.columns([1, 3])
+        rash = c3.radio("16. Rash *", ["Yes", "No"], horizontal=True, index=1)
+        
+        rash_onset = None
+        rash_subside = None
+        rash_type = "N/A"
+        rash_prog = "N/A"
+
+        if rash == "Yes":
+            r1, r2 = c4.columns(2)
+            rash_onset = r1.date_input("16a. Rash Onset (CRITICAL) *", value=None, key="r_onset")
+            rash_subside = r2.date_input("16b. Subside Date (Optional)", value=None, key="r_sub")
+            
+            r3, r4 = c4.columns(2)
+            rash_type_opt = r3.selectbox("16c. Type of Rash", 
+                ["Maculopapular", "Vesicles/Bullae", "Pustules", "Plaques", "Nodules", "Others"])
+            if rash_type_opt == "Others":
+                rash_type = r3.text_input("Specify Rash Type")
+            else:
+                rash_type = rash_type_opt
+            
+            prog_opt = r4.radio("16d. Progression: Head/Face → Body?", ["Yes", "No"], horizontal=True)
+            if prog_opt == "No":
+                rash_prog = r4.text_input("Describe Progression")
+            else:
+                rash_prog = "Cephalocaudal (Head to Body)"
+
+        # 17-20. THE 3 Cs & LYMPH
+        st.markdown("---")
+        st.caption("Symptoms (Leave 'No' if absent)")
+        
+        col_s1, col_s2 = st.columns(2)
+        
+        # Helper to create symptom block to save space
+        def symptom_block(label, key_prefix, col):
+            with col:
+                has_sym = st.checkbox(label, key=f"{key_prefix}_check")
+                s_onset, s_sub = None, None
+                if has_sym:
+                    sc1, sc2 = st.columns(2)
+                    s_onset = sc1.date_input("Onset", key=f"{key_prefix}_on")
+                    s_sub = sc2.date_input("Subside", key=f"{key_prefix}_sub")
+                return "Yes" if has_sym else "No", s_onset, s_sub
+
+        cough, cough_on, cough_sub = symptom_block("17. Cough", "cough", col_s1)
+        coryza, cory_on, cory_sub = symptom_block("18. Coryza (Runny Nose)", "coryza", col_s2)
+        conj, conj_on, conj_sub = symptom_block("19. Conjunctivitis (Red Eye)", "conj", col_s1)
+        lymph, lymph_on, lymph_sub = symptom_block("20. Lymphadenopathy", "lymph", col_s2)
+
+        # 21. COMPLICATIONS
+        st.markdown("---")
+        comp_opts = st.multiselect("21. Complications", 
+            ["None", "Diarrhoea", "Otitis Media", "Encephalitis/SSPE", "Pneumonia", "Others"])
+        
+        complications = ", ".join(comp_opts)
+        if "Others" in comp_opts:
+            other_comp_text = st.text_input("Specify Other Complications")
+            complications += f" ({other_comp_text})"
+
+        # 22. OTHER SYMPTOMS
+        other_sx = st.text_input("22. Other Symptoms (Optional)")
+
+        # --- B.2 PHYSICAL EXAMINATION ---
+        st.divider()
+        st.markdown("##### 🩺 B.2 Physical Examination")
+
+        # 23. BLOOD PRESSURE
+        c_bp1, c_bp2, c_bp3 = st.columns([1, 1, 2])
+        no_cuff = st.checkbox("23a. Paediatric BP Cuff Not Available")
+        
+        if no_cuff:
+            bp_sys, bp_dia = "N/A", "N/A"
+            c_bp1.text_input("Systolic", value="N/A", disabled=True)
+            c_bp2.text_input("Diastolic", value="N/A", disabled=True)
+        else:
+            bp_sys = c_bp1.number_input("23b. Systolic (mmHg)", min_value=0, max_value=300)
+            bp_dia = c_bp2.number_input("23c. Diastolic (mmHg)", min_value=0, max_value=200)
+
+        # 24-26. VITALS
+        c_v1, c_v2, c_v3 = st.columns(3)
+        pulse = c_v1.number_input("24. Pulse Rate (bpm) *", min_value=0)
+        rr = c_v2.number_input("25. Resp. Rate (min) *", min_value=0)
+        
+        # 26. SpO2 Logic
+        spo2_val = c_v3.number_input("26a. SpO2 (%) *", min_value=0, max_value=100, step=1)
+        spo2_mode = c_v3.selectbox("26b. Oxygen Support", ["Room Air", "Nasal Prong", "Face Mask", "Others"])
+        
+        spo2_flow = "N/A"
+        if spo2_mode in ["Nasal Prong", "Face Mask"]:
+            spo2_flow = c_v3.number_input("Flow Rate (L/min)", min_value=0.0)
+        elif spo2_mode == "Others":
+            spo2_flow = c_v3.text_input("Specify Support")
+
+        # 27. TEMPERATURE (Auto-fill Logic)
+        # We default to the fever_temp from history if it was entered, else 0
+        default_temp = float(fever_temp) if (fever == "Yes" and fever_temp) else 0.0
+        temp_curr = st.number_input("27. Current Temperature (°C) *", value=default_temp, step=0.1, format="%.1f")
+
+        # 28-30. SCORES & EXAM
+        c_ex1, c_ex2 = st.columns(2)
+        pain_score = c_ex1.slider("28. Pain Score", 0, 10, 0)
+        gcs = c_ex2.slider("29. GCS", 3, 15, 15)
+        
+        systemic_exam = st.text_area("30. Systemic Examination Findings (Optional)")
+
+        st.markdown("---")
+        
+        # --- SUBMIT BUTTON ---
+        if st.button("🚀 Save & Submit Case", type="primary"):
+            # Mandatory Check (Simplified)
+            missing = []
+            if not fever: missing.append("Fever History")
+            if not rash: missing.append("Rash History")
+            if fever == "Yes" and not fever_onset: missing.append("Fever Onset Date")
+            if rash == "Yes" and not rash_onset: missing.append("Rash Onset Date")
+            
+            if missing:
+                st.error(f"Missing mandatory fields: {', '.join(missing)}")
             else:
                 new_id = datetime.now().strftime("%Y%m%d%H%M%S")
                 
-                # Consolidate Data
+                # Consolidate ALL Data
+                # Note: 'name', 'mykad', etc comes from Section A code
                 case_data = {
-                    "ID": new_id, 
-                    "Status": "Pending_Epi", 
-                    "Name": name, 
-                    "MyKad": mykad,
-                    "Nationality": nationality,
-                    "Ethnicity": ethnicity,
-                    "Gender": gender,
-                    "DOB": str(dob),
-                    "Age": age_str,
-                    "Address": address,
-                    "Postcode": postcode,
-                    "District": district,
-                    "State": state,
-                    "Contact": contact,
-                    "Occupation": occupation,
-                    "Premise_Name": work_name,
-                    "Premise_Address": work_addr,
+                    "ID": new_id,
+                    "Status": "Pending_Epi",
+                    # --- SECTION A ---
+                    "Name": name, "MyKad": mykad, "State": state, # ... add other Sec A vars
+                    
+                    # --- SECTION B1 ---
+                    "Fever": fever, "Fever_Onset": str(fever_onset), "Fever_Subside": str(fever_subside), "Fever_Max_Temp": fever_temp,
+                    "Rash": rash, "Rash_Onset": str(rash_onset), "Rash_Subside": str(rash_subside), "Rash_Type": rash_type, "Rash_Progression": rash_prog,
+                    "Cough": cough, "Cough_Onset": str(cough_on), "Cough_Subside": str(cough_sub),
+                    "Coryza": coryza, "Coryza_Onset": str(cory_on), "Coryza_Subside": str(cory_sub),
+                    "Conjunctivitis": conj, "Conj_Onset": str(conj_on), "Conj_Subside": str(conj_sub),
+                    "Lymphadenopathy": lymph, "Lymph_Onset": str(lymph_on), "Lymph_Subside": str(lymph_sub),
+                    "Complications": complications, "Other_Symptoms": other_sx,
+                    
+                    # --- SECTION B2 ---
+                    "BP_Systolic": bp_sys, "BP_Diastolic": bp_dia,
+                    "Pulse": pulse, "RR": rr,
+                    "SpO2_Val": spo2_val, "SpO2_Mode": spo2_mode, "SpO2_Flow": spo2_flow,
+                    "Temp_Current": temp_curr, "Pain_Score": pain_score, "GCS": gcs,
+                    "Systemic_Exam": systemic_exam,
+                    
                     "Final_Classification": "Pending"
                 }
                 
                 save_new_case(case_data)
-                st.success(f"Case **{name}** created successfully! ID: {new_id}")
-                st.balloons()
+                st.success("Case Submitted Successfully!")
 
 # --- VIEW 2: EPIDEMIOLOGIST ---
 elif role == "epidemiologist":
