@@ -1,3 +1,5 @@
 streamlit
 pandas
 gspread
+streamlit-searchbox
+requests
