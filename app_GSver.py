@@ -151,10 +151,12 @@ if role == "clinician":
     if check_password("clinician"):
         st.sidebar.button("Log Out", on_click=logout, args=("clinician",))
         
-        st.header("👨‍⚕️ Phase 1: Clinical Entry")
-        st.info("Interactive Clerking Form: Enter MyKad to auto-fill DOB/Age.")
+        st.header("👨‍⚕️ Phase 1: Clinical Clerking")
+        st.info("Complete Sections A & B to submit for investigation.")
 
-        # --- SECTION A: DEMOGRAPHICS ---
+        # ==========================================
+        # SECTION A: DEMOGRAPHICS
+        # ==========================================
         st.subheader("Section A: Demographics")
         
         # 1. Patient Name (Auto-Uppercase)
@@ -192,18 +194,16 @@ if role == "clinician":
         age_str = calculate_age_display(dob)
         if dob:
             st.caption(f"📅 Calculated Age: **{age_str}**")
-            
             # 12. Occupation Logic (Auto-fill if under 18)
             years_old = int(age_str.split(" ")[0])
             is_underage = years_old < 18
         else:
             is_underage = False
 
-# 7-10. SMART ADDRESS SEARCH
+        # 7-10. SMART ADDRESS SEARCH
         st.markdown("---")
         st.markdown("##### 📍 Location Details")
         
-        # Search Box (Variable 7)
         st.caption("Search for address (e.g., 'Taman Tun Sardon'):")
         selected_address = st_searchbox(
             search_address,
@@ -211,36 +211,30 @@ if role == "clinician":
             placeholder="Type to search Google Maps/OSM..."
         )
 
-        # Logic: If user selects from map, use that. If not, use what they typed manually.
-        # We use session state to ensure manual edits aren't overwritten accidentally.
         if "addr_final" not in st.session_state: st.session_state.addr_final = ""
-        
         if selected_address:
             st.session_state.addr_final = selected_address
 
-        # The actual input field (Variable 7) - Pre-filled by search, but editable
         address = st.text_area("7. Full Address (Auto-filled or Manual Input) *", 
                               value=st.session_state.addr_final, height=100)
 
-        # Auto-Fill Logic for State/Postcode (Simple parsing)
-        # Note: Parsing exact postcode from a raw string is tricky, so we let the user confirm.
         auto_postcode = ""
-        auto_state = "Pulau Pinang" # Default
-        
         if address:
             import re
-            # Try find 5 digit postcode
             pc_match = re.search(r'\b\d{5}\b', address)
             if pc_match: auto_postcode = pc_match.group(0)
-            
-            # Simple State detection
-            if "Kedah" in address: auto_state = "Kedah"
-            elif "Perak" in address: auto_state = "Perak"
 
         c8, c9, c10 = st.columns(3)
         postcode = c8.text_input("8. Postcode *", value=auto_postcode)
         district = c9.selectbox("9. District *", ["Timur Laut", "Barat Daya", "Seberang Perai Utara", "Seberang Perai Tengah", "Seberang Perai Selatan", "Lain-lain"])
-        state = c10.text_input("10. State *", value=auto_state)
+        
+        # 10. State (Updated List)
+        MALAYSIA_STATES = [
+            "Pulau Pinang", "Johor", "Kedah", "Kelantan", "Kuala Lumpur", "Labuan", 
+            "Melaka", "Negeri Sembilan", "Pahang", "Perak", "Perlis", "Putrajaya", 
+            "Sabah", "Sarawak", "Selangor", "Terengganu"
+        ]
+        state = c10.selectbox("10. State *", MALAYSIA_STATES)
 
         # 11 & 12. Contact & Occupation
         c11, c12 = st.columns(2)
@@ -256,7 +250,6 @@ if role == "clinician":
         st.markdown("##### 🏫 Premise Details")
         st.caption("Search School / Workplace Name:")
         
-        # Search Box (Variable 13/14)
         selected_premise = st_searchbox(
             search_address,
             key="map_search_premise",
@@ -267,26 +260,24 @@ if role == "clinician":
         if selected_premise:
             st.session_state.premise_final = selected_premise
 
-        col_prem1, col_prem2 = st.columns(2)
-        
-        # We split the result: First part is usually Name, rest is Address
         p_name_val = ""
         p_addr_val = ""
-        
         if st.session_state.premise_final:
             parts = st.session_state.premise_final.split(",", 1)
             p_name_val = parts[0]
             if len(parts) > 1: p_addr_val = parts[1].strip()
 
+        col_prem1, col_prem2 = st.columns(2)
         work_name = col_prem1.text_input("13. Workplace/School Name *", value=p_name_val)
         work_addr = col_prem2.text_area("14. Workplace/School Address *", value=p_addr_val, height=100)
 
-        st.markdown("---")
-        # --- SECTION B: CLINICAL INFORMATION ---
-st.subheader("Section B: Clinical Information")
+        st.divider()
+
+        # ==========================================
+        # SECTION B: CLINICAL INFORMATION
+        # ==========================================
+        st.subheader("Section B: Clinical Information")
         st.caption("The 'Anchor' Dates below are crucial for the algorithm to determine Measles probability.")
-        
-        # 
         
         # --- B.1 HISTORY TAKING ---
         st.markdown("##### 📜 B.1 History Taking")
@@ -340,7 +331,6 @@ st.subheader("Section B: Clinical Information")
         
         col_s1, col_s2 = st.columns(2)
         
-        # Helper to create symptom block to save space
         def symptom_block(label, key_prefix, col):
             with col:
                 has_sym = st.checkbox(label, key=f"{key_prefix}_check")
@@ -401,7 +391,6 @@ st.subheader("Section B: Clinical Information")
             spo2_flow = c_v3.text_input("Specify Support")
 
         # 27. TEMPERATURE (Auto-fill Logic)
-        # We default to the fever_temp from history if it was entered, else 0
         default_temp = float(fever_temp) if (fever == "Yes" and fever_temp) else 0.0
         temp_curr = st.number_input("27. Current Temperature (°C) *", value=default_temp, step=0.1, format="%.1f")
 
@@ -416,7 +405,7 @@ st.subheader("Section B: Clinical Information")
         
         # --- SUBMIT BUTTON ---
         if st.button("🚀 Save & Submit Case", type="primary"):
-            # Mandatory Check (Simplified)
+            # Mandatory Check
             missing = []
             if not fever: missing.append("Fever History")
             if not rash: missing.append("Rash History")
@@ -428,24 +417,26 @@ st.subheader("Section B: Clinical Information")
             else:
                 new_id = datetime.now().strftime("%Y%m%d%H%M%S")
                 
-                # Consolidate ALL Data
-                # Note: 'name', 'mykad', etc comes from Section A code
+                # Consolidate Data
                 case_data = {
                     "ID": new_id,
                     "Status": "Pending_Epi",
-                    # --- SECTION A ---
-                    "Name": name, "MyKad": mykad, "State": state, # ... add other Sec A vars
+                    # SECTION A
+                    "Name": name, "MyKad": mykad, "Nationality": nationality, "Ethnicity": ethnicity,
+                    "Gender": gender, "DOB": str(dob), "Age": age_str,
+                    "Address": address, "Postcode": postcode, "District": district, "State": state,
+                    "Contact": contact, "Occupation": occupation,
+                    "Premise_Name": work_name, "Premise_Address": work_addr,
                     
-                    # --- SECTION B1 ---
+                    # SECTION B
                     "Fever": fever, "Fever_Onset": str(fever_onset), "Fever_Subside": str(fever_subside), "Fever_Max_Temp": fever_temp,
-                    "Rash": rash, "Rash_Onset": str(rash_onset), "Rash_Subside": str(rash_subside), "Rash_Type": rash_type, "Rash_Progression": rash_prog,
+                    "Rash": rash, "Rash_Onset": str(rash_onset), "Rash_Subside": str(rash_subside), 
+                    "Rash_Type": rash_type, "Rash_Progression": rash_prog,
                     "Cough": cough, "Cough_Onset": str(cough_on), "Cough_Subside": str(cough_sub),
                     "Coryza": coryza, "Coryza_Onset": str(cory_on), "Coryza_Subside": str(cory_sub),
                     "Conjunctivitis": conj, "Conj_Onset": str(conj_on), "Conj_Subside": str(conj_sub),
                     "Lymphadenopathy": lymph, "Lymph_Onset": str(lymph_on), "Lymph_Subside": str(lymph_sub),
                     "Complications": complications, "Other_Symptoms": other_sx,
-                    
-                    # --- SECTION B2 ---
                     "BP_Systolic": bp_sys, "BP_Diastolic": bp_dia,
                     "Pulse": pulse, "RR": rr,
                     "SpO2_Val": spo2_val, "SpO2_Mode": spo2_mode, "SpO2_Flow": spo2_flow,
