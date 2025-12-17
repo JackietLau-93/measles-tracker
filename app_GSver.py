@@ -2,6 +2,8 @@ import streamlit as st
 import pandas as pd
 import gspread
 from datetime import datetime
+import requests
+from streamlit_searchbox import st_searchbox
 
 # --- CONNECT TO GOOGLE SHEETS ---
 def get_db_connection():
@@ -113,6 +115,28 @@ def calculate_age_display(dob):
         months += 12
     return f"{years} years, {months} months"
 
+# --- MAP SEARCH FUNCTION (OpenStreetMap) ---
+def search_address(search_term):
+    if not search_term: return []
+    try:
+        url = "https://nominatim.openstreetmap.org/search"
+        params = {
+            "q": search_term,
+            "format": "json",
+            "countrycodes": "my",  # Limit to Malaysia
+            "limit": 5,
+            "addressdetails": 1
+        }
+        # User-Agent is required by OSM policy
+        headers = {'User-Agent': 'MeaslesApp/1.0'}
+        response = requests.get(url, params=params, headers=headers)
+        data = response.json()
+        # Return format: List of (Label, Value) tuples
+        return [(item['display_name'], item['display_name']) for item in data]
+    except Exception as e:
+        print(f"Map Error: {e}")
+        return []
+
 # --- APP UI START ---
 st.set_page_config(page_title="Measles Cloud System", layout="wide", page_icon="🔐")
 
@@ -175,39 +199,87 @@ if role == "clinician":
         else:
             is_underage = False
 
-        # 7-10. Address & Location (Simulating Google Maps functionality)
+# 7-10. SMART ADDRESS SEARCH
         st.markdown("---")
         st.markdown("##### 📍 Location Details")
         
-        # Note: True Google Maps Autocomplete requires an API Key ($$$). 
-        # For this prototype, we provide a Link to open Maps and a manual entry box.
-        col_map1, col_map2 = st.columns([1, 3])
-        with col_map1:
-            st.link_button("🗺️ Open Google Maps", "https://www.google.com.my/maps", help="Find address and copy-paste here")
-        with col_map2:
-            address = st.text_area("7. Full Address (Manual Input or Paste from Maps) *", height=68)
+        # Search Box (Variable 7)
+        st.caption("Search for address (e.g., 'Taman Tun Sardon'):")
+        selected_address = st_searchbox(
+            search_address,
+            key="map_search_home",
+            placeholder="Type to search Google Maps/OSM..."
+        )
+
+        # Logic: If user selects from map, use that. If not, use what they typed manually.
+        # We use session state to ensure manual edits aren't overwritten accidentally.
+        if "addr_final" not in st.session_state: st.session_state.addr_final = ""
+        
+        if selected_address:
+            st.session_state.addr_final = selected_address
+
+        # The actual input field (Variable 7) - Pre-filled by search, but editable
+        address = st.text_area("7. Full Address (Auto-filled or Manual Input) *", 
+                              value=st.session_state.addr_final, height=100)
+
+        # Auto-Fill Logic for State/Postcode (Simple parsing)
+        # Note: Parsing exact postcode from a raw string is tricky, so we let the user confirm.
+        auto_postcode = ""
+        auto_state = "Pulau Pinang" # Default
+        
+        if address:
+            import re
+            # Try find 5 digit postcode
+            pc_match = re.search(r'\b\d{5}\b', address)
+            if pc_match: auto_postcode = pc_match.group(0)
+            
+            # Simple State detection
+            if "Kedah" in address: auto_state = "Kedah"
+            elif "Perak" in address: auto_state = "Perak"
 
         c8, c9, c10 = st.columns(3)
-        postcode = c8.text_input("8. Postcode *")
+        postcode = c8.text_input("8. Postcode *", value=auto_postcode)
         district = c9.selectbox("9. District *", ["Timur Laut", "Barat Daya", "Seberang Perai Utara", "Seberang Perai Tengah", "Seberang Perai Selatan", "Lain-lain"])
-        state = c10.text_input("10. State *", value="Pulau Pinang")
+        state = c10.text_input("10. State *", value=auto_state)
 
         # 11 & 12. Contact & Occupation
         c11, c12 = st.columns(2)
         contact_raw = c11.text_input("11. Contact No. *")
-        contact = clean_id(contact_raw) # Reusing cleaner to strip chars
+        contact = clean_id(contact_raw)
         
-        # Auto-fill occupation if under 18
         if is_underage:
-            occupation = c12.text_input("12. Occupation *", value="Underage / Student", disabled=False)
+            occupation = c12.text_input("12. Occupation *", value="Underage / Student")
         else:
             occupation = c12.text_input("12. Occupation *")
 
-        # 13 & 14. Workplace / School
+        # 13 & 14. WORKPLACE / SCHOOL SEARCH
         st.markdown("##### 🏫 Premise Details")
+        st.caption("Search School / Workplace Name:")
+        
+        # Search Box (Variable 13/14)
+        selected_premise = st_searchbox(
+            search_address,
+            key="map_search_premise",
+            placeholder="Search Premise (e.g., 'SMK Penanti')..."
+        )
+        
+        if "premise_final" not in st.session_state: st.session_state.premise_final = ""
+        if selected_premise:
+            st.session_state.premise_final = selected_premise
+
         col_prem1, col_prem2 = st.columns(2)
-        work_name = col_prem1.text_input("13. Workplace/School Name *")
-        work_addr = col_prem2.text_area("14. Workplace/School Address *", height=68)
+        
+        # We split the result: First part is usually Name, rest is Address
+        p_name_val = ""
+        p_addr_val = ""
+        
+        if st.session_state.premise_final:
+            parts = st.session_state.premise_final.split(",", 1)
+            p_name_val = parts[0]
+            if len(parts) > 1: p_addr_val = parts[1].strip()
+
+        work_name = col_prem1.text_input("13. Workplace/School Name *", value=p_name_val)
+        work_addr = col_prem2.text_area("14. Workplace/School Address *", value=p_addr_val, height=100)
 
         st.markdown("---")
         
